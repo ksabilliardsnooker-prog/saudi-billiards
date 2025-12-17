@@ -52,7 +52,6 @@ export function Register() {
       })
 
       if (error) {
-        console.error('Error:', error)
         toast.error(error.message)
         return
       }
@@ -62,7 +61,6 @@ export function Register() {
         navigate('/login')
       }
     } catch (err) {
-      console.error('Error:', err)
       toast.error('حدث خطأ غير متوقع')
     } finally {
       setLoading(false)
@@ -110,7 +108,7 @@ export function Register() {
           <input
             type="tel"
             name="phone"
-            placeholder="رقم الجوال (5XXXXXXXX)"
+            placeholder="رقم الجوال"
             value={formData.phone}
             onChange={handleChange}
             required
@@ -185,12 +183,3 @@ export function Register() {
     </div>
   )
 }
-```
-
----
-
-### الخطوات:
-
-**1.** افتح:
-```
-https://github.com/ksabilliardsnooker-prog/saudi-billiards/blob/main/src/pages/auth/Register.tsx
