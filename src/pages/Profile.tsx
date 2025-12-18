@@ -9,6 +9,15 @@ export function Profile() {
   const { user, profile, refreshProfile } = useAuth()
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
+  
+  // Email change states
+  const [showEmailChange, setShowEmailChange] = useState(false)
+  const [newEmail, setNewEmail] = useState('')
+  const [emailOtp, setEmailOtp] = useState('')
+  const [emailOtpSent, setEmailOtpSent] = useState(false)
+  const [emailLoading, setEmailLoading] = useState(false)
+  const [countdown, setCountdown] = useState(0)
+
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
@@ -41,6 +50,14 @@ export function Profile() {
     }
   }, [user, profile, navigate])
 
+  // Countdown timer
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [countdown])
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
   }
@@ -54,22 +71,18 @@ export function Profile() {
       const fileExt = file.name.split('.').pop()
       const fileName = `${user.id}/avatar.${fileExt}`
 
-      // حذف الصورة القديمة إن وجدت
       await supabase.storage.from('avatars').remove([fileName])
 
-      // رفع الصورة الجديدة
       const { error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(fileName, file, { upsert: true })
 
       if (uploadError) throw uploadError
 
-      // الحصول على الرابط العام
       const { data: { publicUrl } } = supabase.storage
         .from('avatars')
         .getPublicUrl(fileName)
 
-      // تحديث الملف الشخصي
       await supabase
         .from('users')
         .update({ avatar_url: publicUrl })
@@ -116,6 +129,92 @@ export function Profile() {
     }
   }
 
+  // Send OTP for email change
+  const sendEmailOtp = async () => {
+    if (!newEmail) {
+      toast.error('أدخل البريد الإلكتروني الجديد')
+      return
+    }
+
+    if (newEmail === profile?.email) {
+      toast.error('البريد الجديد مطابق للبريد الحالي')
+      return
+    }
+
+    setEmailLoading(true)
+    try {
+      const { error } = await supabase.auth.updateUser({
+        email: newEmail
+      })
+
+      if (error) {
+        toast.error(error.message)
+        return
+      }
+
+      toast.success('تم إرسال رمز التحقق إلى البريد الجديد')
+      setEmailOtpSent(true)
+      setCountdown(60)
+    } catch (error) {
+      toast.error('حدث خطأ في إرسال الرمز')
+    } finally {
+      setEmailLoading(false)
+    }
+  }
+
+  // Verify OTP and change email
+  const verifyEmailOtp = async () => {
+    if (emailOtp.length !== 6) {
+      toast.error('رمز التحقق يجب أن يكون 6 أرقام')
+      return
+    }
+
+    setEmailLoading(true)
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        email: newEmail,
+        token: emailOtp,
+        type: 'email_change'
+      })
+
+      if (error) {
+        toast.error('رمز التحقق غير صحيح')
+        return
+      }
+
+      // Update email in users table
+      await supabase
+        .from('users')
+        .update({ email: newEmail })
+        .eq('id', user?.id)
+
+      toast.success('تم تغيير البريد الإلكتروني بنجاح')
+      setShowEmailChange(false)
+      setNewEmail('')
+      setEmailOtp('')
+      setEmailOtpSent(false)
+      await refreshProfile()
+    } catch (error) {
+      toast.error('حدث خطأ في تغيير البريد')
+    } finally {
+      setEmailLoading(false)
+    }
+  }
+
+  const cancelEmailChange = () => {
+    setShowEmailChange(false)
+    setNewEmail('')
+    setEmailOtp('')
+    setEmailOtpSent(false)
+    setCountdown(0)
+  }
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
   const cities = ['الرياض', 'جدة', 'مكة المكرمة', 'المدينة المنورة', 'الدمام', 'الخبر', 'الظهران', 'الطائف', 'تبوك', 'بريدة', 'أبها', 'خميس مشيط', 'حائل', 'نجران', 'جازان', 'ينبع', 'الجبيل', 'الأحساء', 'القطيف', 'أخرى']
 
   const getMemberTypeLabel = () => {
@@ -146,7 +245,6 @@ export function Profile() {
         {/* Header */}
         <div className="bg-gray-800 rounded-xl p-6 mb-6">
           <div className="flex items-center gap-6">
-            {/* Avatar */}
             <div className="relative">
               <div className="w-24 h-24 rounded-full bg-gray-700 overflow-hidden">
                 {profile?.avatar_url ? (
@@ -173,7 +271,6 @@ export function Profile() {
               </label>
             </div>
 
-            {/* Info */}
             <div className="flex-1">
               <h1 className="text-2xl font-bold text-white">
                 {isClub ? profile?.club_name : `${profile?.first_name} ${profile?.last_name}`}
@@ -191,12 +288,116 @@ export function Profile() {
           </div>
         </div>
 
+        {/* Email Change Section */}
+        <div className="bg-gray-800 rounded-xl p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-white">البريد الإلكتروني</h2>
+            {!showEmailChange && (
+              <button
+                onClick={() => setShowEmailChange(true)}
+                className="text-green-400 hover:text-green-300 text-sm"
+              >
+                تغيير البريد
+              </button>
+            )}
+          </div>
+
+          {!showEmailChange ? (
+            <p className="text-gray-300" dir="ltr">{profile?.email}</p>
+          ) : (
+            <div className="space-y-4">
+              {!emailOtpSent ? (
+                <>
+                  <div>
+                    <label className="block text-gray-400 text-sm mb-2">البريد الإلكتروني الجديد</label>
+                    <input
+                      type="email"
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      placeholder="example@email.com"
+                      dir="ltr"
+                      className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                    />
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={cancelEmailChange}
+                      className="flex-1 p-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      onClick={sendEmailOtp}
+                      disabled={emailLoading}
+                      className="flex-1 p-3 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50"
+                    >
+                      {emailLoading ? 'جاري الإرسال...' : 'إرسال رمز التحقق'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-center p-4 bg-gray-700 rounded-lg">
+                    <p className="text-gray-300 text-sm">تم إرسال رمز التحقق إلى:</p>
+                    <p className="text-white font-bold" dir="ltr">{newEmail}</p>
+                    {countdown > 0 && (
+                      <p className="text-yellow-400 mt-2">
+                        ⏱️ الرمز صالح لمدة: {formatTime(countdown)}
+                      </p>
+                    )}
+                    {countdown === 0 && emailOtpSent && (
+                      <p className="text-red-400 mt-2">
+                        ⚠️ انتهت صلاحية الرمز
+                      </p>
+                    )}
+                  </div>
+
+                  <input
+                    type="text"
+                    value={emailOtp}
+                    onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="000000"
+                    maxLength={6}
+                    className="w-full p-4 bg-gray-700 border border-gray-600 rounded-lg text-white text-center text-2xl tracking-widest"
+                    dir="ltr"
+                  />
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={cancelEmailChange}
+                      className="flex-1 p-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      onClick={verifyEmailOtp}
+                      disabled={emailLoading || emailOtp.length !== 6 || countdown === 0}
+                      className="flex-1 p-3 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50"
+                    >
+                      {emailLoading ? 'جاري التحقق...' : 'تأكيد'}
+                    </button>
+                  </div>
+
+                  {countdown === 0 && (
+                    <button
+                      onClick={sendEmailOtp}
+                      disabled={emailLoading}
+                      className="w-full p-3 text-green-400 hover:text-green-300"
+                    >
+                      إعادة إرسال الرمز
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Form */}
         <form onSubmit={handleSubmit} className="bg-gray-800 rounded-xl p-6">
           <h2 className="text-xl font-bold text-white mb-6">البيانات الشخصية</h2>
 
           <div className="space-y-4">
-            {/* Name */}
             {isClub ? (
               <div>
                 <label className="block text-gray-400 text-sm mb-2">اسم النادي/الصالة</label>
@@ -233,7 +434,6 @@ export function Profile() {
               </div>
             )}
 
-            {/* Phone & City */}
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-gray-400 text-sm mb-2">رقم الجوال</label>
@@ -262,7 +462,6 @@ export function Profile() {
               </div>
             </div>
 
-            {/* Bio */}
             <div>
               <label className="block text-gray-400 text-sm mb-2">نبذة عنك</label>
               <textarea
@@ -275,7 +474,6 @@ export function Profile() {
               />
             </div>
 
-            {/* Social Media */}
             <div>
               <h3 className="text-lg font-bold text-white mb-4">حسابات التواصل الاجتماعي</h3>
               <div className="space-y-3">
@@ -319,7 +517,6 @@ export function Profile() {
             </div>
           </div>
 
-          {/* Submit Button */}
           <button
             type="submit"
             disabled={loading}
