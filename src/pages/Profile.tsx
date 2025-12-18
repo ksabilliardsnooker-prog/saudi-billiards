@@ -46,22 +46,9 @@ export function Profile() {
         social_instagram: profile.social_instagram || '',
         social_snapchat: profile.social_snapchat || ''
       })
+      setHasPassword(profile.has_password || false)
     }
-    checkIfHasPassword()
   }, [user, profile, navigate])
-
-  const checkIfHasPassword = async () => {
-    if (!user) return
-    const { data } = await supabase
-      .from('users')
-      .select('has_password')
-      .eq('id', user.id)
-      .single()
-    
-    if (data) {
-      setHasPassword(data.has_password || false)
-    }
-  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
@@ -171,6 +158,7 @@ export function Profile() {
       setNewPassword('')
       setConfirmPassword('')
       setHasPassword(true)
+      await refreshProfile()
     } catch (error) {
       toast.error('حدث خطأ')
     } finally {
