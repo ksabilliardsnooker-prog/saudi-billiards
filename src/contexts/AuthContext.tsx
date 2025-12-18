@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { User as SupabaseUser, Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
@@ -21,80 +21,71 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const fetchProfile = useCallback(async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', userId)
-        .single()
+  const fetchProfile = async (userId: string): Promise<User | null> => {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single()
 
-      if (error) {
-        console.error('Error fetching profile:', error)
-        return null
-      }
-      return data as User
-    } catch (error) {
+    if (error) {
       console.error('Error fetching profile:', error)
       return null
     }
-  }, [])
+    return data as User
+  }
 
-  const refreshProfile = useCallback(async () => {
+  const refreshProfile = async () => {
     if (user) {
-      const profileData = await fetchProfile(user.id)
-      setProfile(profileData)
+      const data = await fetchProfile(user.id)
+      setProfile(data)
     }
-  }, [user, fetchProfile])
+  }
 
   useEffect(() => {
-    let mounted = true
+    let isMounted = true
 
-    // Get initial session
-    supabase.auth.getSession().then(async ({ data: { session: currentSession } }) => {
-      if (!mounted) return
+    const init = async () => {
+      const { data: { session: s } } = await supabase.auth.getSession()
+      
+      if (!isMounted) return
 
-      setSession(currentSession)
-      setUser(currentSession?.user ?? null)
-
-      if (currentSession?.user) {
-        const profileData = await fetchProfile(currentSession.user.id)
-        if (mounted) {
-          setProfile(profileData)
-        }
+      if (s?.user) {
+        setSession(s)
+        setUser(s.user)
+        const p = await fetchProfile(s.user.id)
+        if (isMounted) setProfile(p)
       }
+      
+      if (isMounted) setLoading(false)
+    }
 
-      setLoading(false)
-    })
+    init()
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, newSession) => {
-        if (!mounted) return
+      async (event, s) => {
+        if (!isMounted) return
 
-        console.log('Auth event:', event)
-
-        setSession(newSession)
-        setUser(newSession?.user ?? null)
-
-        if (newSession?.user) {
-          const profileData = await fetchProfile(newSession.user.id)
-          if (mounted) {
-            setProfile(profileData)
-          }
-        } else {
+        if (event === 'SIGNED_OUT') {
+          setSession(null)
+          setUser(null)
           setProfile(null)
+        } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          if (s?.user) {
+            setSession(s)
+            setUser(s.user)
+            const p = await fetchProfile(s.user.id)
+            if (isMounted) setProfile(p)
+          }
         }
-
-        setLoading(false)
       }
     )
 
     return () => {
-      mounted = false
+      isMounted = false
       subscription.unsubscribe()
     }
-  }, [fetchProfile])
+  }, [])
 
   const signOut = async () => {
     await supabase.auth.signOut()
@@ -103,17 +94,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfile(null)
   }
 
-  const value = {
-    session,
-    user,
-    profile,
-    loading,
-    signOut,
-    refreshProfile
-  }
-
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider value={{ session, user, profile, loading, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   )
@@ -121,8 +103,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext)
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider')
-  }
+  if (!context) throw new Error('useAuth must be used within AuthProvider')
   return context
 }
