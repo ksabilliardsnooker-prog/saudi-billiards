@@ -9,26 +9,23 @@ import {
 import { Button } from './ui'
 
 export function Navbar() {
-  const { profile, signOut, loading } = useAuth()
+  const { profile, signOut } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [profileMenuOpen, setProfileMenuOpen] = useState(false)
   const profileMenuRef = useRef<HTMLDivElement>(null)
 
-  // Close profile menu when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
         setProfileMenuOpen(false)
       }
     }
-
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  // Close mobile menu on route change
   useEffect(() => {
     setMobileMenuOpen(false)
     setProfileMenuOpen(false)
@@ -53,7 +50,6 @@ export function Navbar() {
     <nav className="sticky top-0 z-50 glass border-b border-dark-800">
       <div className="container-custom">
         <div className="flex items-center justify-between h-16">
-          {/* Logo */}
           <Link to="/" className="flex items-center gap-3">
             <div className="w-10 h-10 bg-primary-600 rounded-xl flex items-center justify-center">
               <span className="text-2xl">🎱</span>
@@ -61,7 +57,6 @@ export function Navbar() {
             <span className="font-bold text-lg hidden sm:block">بلياردو السعودية</span>
           </Link>
 
-          {/* Desktop Navigation */}
           <div className="hidden lg:flex items-center gap-1">
             {navLinks.map((link) => (
               <Link
@@ -79,11 +74,8 @@ export function Navbar() {
             ))}
           </div>
 
-          {/* Auth Buttons / Profile */}
           <div className="flex items-center gap-3">
-            {loading ? (
-              <div className="w-8 h-8 spinner-sm" />
-            ) : profile ? (
+            {profile ? (
               <div className="relative" ref={profileMenuRef}>
                 <button
                   onClick={() => setProfileMenuOpen(!profileMenuOpen)}
@@ -91,11 +83,7 @@ export function Navbar() {
                 >
                   <div className="w-9 h-9 rounded-full bg-primary-600 flex items-center justify-center">
                     {profile.avatar_url ? (
-                      <img
-                        src={profile.avatar_url}
-                        alt=""
-                        className="w-full h-full rounded-full object-cover"
-                      />
+                      <img src={profile.avatar_url} alt="" className="w-full h-full rounded-full object-cover" />
                     ) : (
                       <User className="w-5 h-5 text-white" />
                     )}
@@ -108,12 +96,9 @@ export function Navbar() {
                       {MEMBER_TYPE_LABELS[profile.member_type]}
                     </p>
                   </div>
-                  <ChevronDown className={`w-4 h-4 text-dark-400 transition-transform ${
-                    profileMenuOpen ? 'rotate-180' : ''
-                  }`} />
+                  <ChevronDown className={`w-4 h-4 text-dark-400 transition-transform ${profileMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
 
-                {/* Profile Dropdown */}
                 {profileMenuOpen && (
                   <div className="absolute left-0 mt-2 w-56 bg-dark-900 border border-dark-800 rounded-xl shadow-xl overflow-hidden animate-slide-down">
                     <div className="p-4 border-b border-dark-800">
@@ -124,27 +109,18 @@ export function Navbar() {
                     </div>
                     
                     <div className="py-2">
-                      <Link
-                        to="/profile"
-                        className="flex items-center gap-3 px-4 py-2.5 text-dark-300 hover:text-white hover:bg-dark-800 transition-colors"
-                      >
+                      <Link to="/profile" className="flex items-center gap-3 px-4 py-2.5 text-dark-300 hover:text-white hover:bg-dark-800 transition-colors">
                         <User className="w-4 h-4" />
                         <span>الملف الشخصي</span>
                       </Link>
                       
-                      <Link
-                        to="/add"
-                        className="flex items-center gap-3 px-4 py-2.5 text-dark-300 hover:text-white hover:bg-dark-800 transition-colors"
-                      >
+                      <Link to="/add" className="flex items-center gap-3 px-4 py-2.5 text-dark-300 hover:text-white hover:bg-dark-800 transition-colors">
                         <ShoppingBag className="w-4 h-4" />
                         <span>إضافة إعلان</span>
                       </Link>
 
                       {(profile.member_type === 'super_admin' || profile.member_type === 'moderator') && (
-                        <Link
-                          to="/admin/dashboard"
-                          className="flex items-center gap-3 px-4 py-2.5 text-dark-300 hover:text-white hover:bg-dark-800 transition-colors"
-                        >
+                        <Link to="/admin/dashboard" className="flex items-center gap-3 px-4 py-2.5 text-dark-300 hover:text-white hover:bg-dark-800 transition-colors">
                           <Settings className="w-4 h-4" />
                           <span>لوحة التحكم</span>
                         </Link>
@@ -152,10 +128,7 @@ export function Navbar() {
                     </div>
 
                     <div className="border-t border-dark-800 py-2">
-                      <button
-                        onClick={handleSignOut}
-                        className="flex items-center gap-3 px-4 py-2.5 text-red-400 hover:text-red-300 hover:bg-dark-800 transition-colors w-full"
-                      >
+                      <button onClick={handleSignOut} className="flex items-center gap-3 px-4 py-2.5 text-red-400 hover:text-red-300 hover:bg-dark-800 transition-colors w-full">
                         <LogOut className="w-4 h-4" />
                         <span>تسجيل الخروج</span>
                       </button>
@@ -166,33 +139,23 @@ export function Navbar() {
             ) : (
               <div className="flex items-center gap-2">
                 <Link to="/login">
-                  <Button variant="ghost" size="sm">
-                    دخول
-                  </Button>
+                  <Button variant="ghost" size="sm">دخول</Button>
                 </Link>
                 <Link to="/register">
-                  <Button size="sm">
-                    تسجيل
-                  </Button>
+                  <Button size="sm">تسجيل</Button>
                 </Link>
               </div>
             )}
 
-            {/* Mobile Menu Button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="lg:hidden p-2 rounded-lg hover:bg-dark-800 transition-colors"
             >
-              {mobileMenuOpen ? (
-                <X className="w-6 h-6" />
-              ) : (
-                <Menu className="w-6 h-6" />
-              )}
+              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
           </div>
         </div>
 
-        {/* Mobile Navigation */}
         {mobileMenuOpen && (
           <div className="lg:hidden py-4 border-t border-dark-800 animate-slide-down">
             <div className="flex flex-col gap-1">
