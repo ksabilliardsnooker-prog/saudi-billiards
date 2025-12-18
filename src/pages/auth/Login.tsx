@@ -228,7 +228,7 @@ export function Login() {
               onClick={handleBack}
               className="w-full p-3 text-gray-400 hover:text-white"
             >
-              ← تغيير البريد الإلكتروني
+              ← رجوع
             </button>
 
             {countdown === 0 && (
