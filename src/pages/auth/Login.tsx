@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
@@ -9,6 +9,21 @@ export function Login() {
   const [otpSent, setOtpSent] = useState(false)
   const [email, setEmail] = useState('')
   const [otp, setOtp] = useState('')
+  const [countdown, setCountdown] = useState(0)
+
+  // Countdown timer
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [countdown])
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
 
   const checkEmailExists = async () => {
     const { data } = await supabase
@@ -20,8 +35,8 @@ export function Login() {
     return data
   }
 
-  const sendOtp = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const sendOtp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
     
     if (!email) {
       toast.error('أدخل البريد الإلكتروني')
@@ -30,7 +45,6 @@ export function Login() {
 
     setLoading(true)
     try {
-      // تحقق من وجود الإيميل
       const user = await checkEmailExists()
       
       if (!user) {
@@ -39,7 +53,6 @@ export function Login() {
         return
       }
 
-      // إرسال OTP
       const { error } = await supabase.auth.signInWithOtp({
         email: email
       })
@@ -51,6 +64,7 @@ export function Login() {
 
       toast.success('تم إرسال رمز الدخول إلى بريدك الإلكتروني')
       setOtpSent(true)
+      setCountdown(60)
     } catch (err) {
       toast.error('حدث خطأ غير متوقع')
     } finally {
@@ -63,6 +77,11 @@ export function Login() {
     
     if (otp.length !== 6) {
       toast.error('رمز التحقق يجب أن يكون 6 أرقام')
+      return
+    }
+
+    if (countdown === 0) {
+      toast.error('انتهت صلاحية الرمز، أعد الإرسال')
       return
     }
 
@@ -79,7 +98,6 @@ export function Login() {
         return
       }
 
-      // جلب بيانات المستخدم
       const user = await checkEmailExists()
       
       if (!user) {
@@ -89,12 +107,9 @@ export function Login() {
 
       toast.success('تم تسجيل الدخول بنجاح!')
 
-      // توجيه حسب حالة الحساب ونوع العضوية
       if (user.member_type === 'player') {
-        // لاعب - يدخل مباشرة
         navigate('/')
       } else {
-        // مدرب أو نادي - حسب الحالة
         switch (user.account_status) {
           case 'pending':
             navigate('/upload-documents')
@@ -124,6 +139,12 @@ export function Login() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleBack = () => {
+    setOtpSent(false)
+    setOtp('')
+    setCountdown(0)
   }
 
   return (
@@ -171,6 +192,19 @@ export function Login() {
               <p className="text-white font-bold" dir="ltr">{email}</p>
             </div>
 
+            {/* Countdown Timer */}
+            <div className="text-center mb-4">
+              {countdown > 0 ? (
+                <p className="text-yellow-400 text-lg">
+                  ⏱️ صلاحية الرمز: {formatTime(countdown)}
+                </p>
+              ) : (
+                <p className="text-red-400">
+                  ⚠️ انتهت صلاحية الرمز
+                </p>
+              )}
+            </div>
+
             <input
               type="text"
               value={otp}
@@ -183,7 +217,7 @@ export function Login() {
 
             <button
               type="submit"
-              disabled={loading || otp.length !== 6}
+              disabled={loading || otp.length !== 6 || countdown === 0}
               className="w-full p-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium disabled:opacity-50"
             >
               {loading ? 'جاري التحقق...' : 'دخول'}
@@ -191,20 +225,22 @@ export function Login() {
 
             <button
               type="button"
-              onClick={() => setOtpSent(false)}
+              onClick={handleBack}
               className="w-full p-3 text-gray-400 hover:text-white"
             >
               ← تغيير البريد الإلكتروني
             </button>
 
-            <button
-              type="button"
-              onClick={sendOtp}
-              disabled={loading}
-              className="w-full p-3 text-green-400 hover:text-green-300"
-            >
-              إعادة إرسال الرمز
-            </button>
+            {countdown === 0 && (
+              <button
+                type="button"
+                onClick={() => sendOtp()}
+                disabled={loading}
+                className="w-full p-3 text-green-400 hover:text-green-300"
+              >
+                إعادة إرسال الرمز
+              </button>
+            )}
           </form>
         )}
 
