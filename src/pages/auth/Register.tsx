@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
@@ -12,6 +12,7 @@ export function Register() {
   const [loading, setLoading] = useState(false)
   const [otpSent, setOtpSent] = useState(false)
   const [otp, setOtp] = useState('')
+  const [countdown, setCountdown] = useState(0)
   const [formData, setFormData] = useState({
     member_type: 'player' as MemberType,
     first_name: '',
@@ -22,6 +23,19 @@ export function Register() {
     phone: '',
     city: ''
   })
+
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [countdown])
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
@@ -106,6 +120,8 @@ export function Register() {
   const handleBack = () => {
     if (otpSent) {
       setOtpSent(false)
+      setOtp('')
+      setCountdown(0)
     } else {
       setStep((step - 1) as Step)
     }
@@ -115,18 +131,7 @@ export function Register() {
     setLoading(true)
     try {
       const { error } = await supabase.auth.signInWithOtp({
-        email: formData.email,
-        options: {
-          data: {
-            member_type: formData.member_type,
-            first_name: formData.member_type !== 'club' ? formData.first_name : null,
-            last_name: formData.member_type !== 'club' ? formData.last_name : null,
-            club_name: formData.member_type === 'club' ? formData.club_name : null,
-            birth_date: formData.member_type !== 'club' ? formData.birth_date : null,
-            phone: formData.phone,
-            city: formData.city
-          }
-        }
+        email: formData.email
       })
 
       if (error) {
@@ -136,6 +141,7 @@ export function Register() {
 
       toast.success('تم إرسال رمز التحقق إلى بريدك الإلكتروني')
       setOtpSent(true)
+      setCountdown(60)
     } catch (err) {
       toast.error('حدث خطأ غير متوقع')
     } finally {
@@ -150,9 +156,14 @@ export function Register() {
       return
     }
 
+    if (countdown === 0) {
+      toast.error('انتهت صلاحية الرمز، أعد الإرسال')
+      return
+    }
+
     setLoading(true)
     try {
-      const { error } = await supabase.auth.verifyOtp({
+      const { data, error } = await supabase.auth.verifyOtp({
         email: formData.email,
         token: otp,
         type: 'email'
@@ -160,20 +171,53 @@ export function Register() {
 
       if (error) {
         toast.error('رمز التحقق غير صحيح')
+        setLoading(false)
+        return
+      }
+
+      if (!data.user) {
+        toast.error('حدث خطأ في التسجيل')
+        setLoading(false)
+        return
+      }
+
+      // إضافة بيانات المستخدم في جدول users
+      const userData = {
+        id: data.user.id,
+        email: formData.email,
+        phone: formData.phone,
+        member_type: formData.member_type,
+        account_status: formData.member_type === 'player' ? 'active' : 'pending',
+        first_name: formData.member_type !== 'club' ? formData.first_name : '',
+        last_name: formData.member_type !== 'club' ? formData.last_name : '',
+        club_name: formData.member_type === 'club' ? formData.club_name : '',
+        birth_date: formData.member_type !== 'club' ? formData.birth_date : null,
+        city: formData.city
+      }
+
+      const { error: insertError } = await supabase
+        .from('users')
+        .upsert(userData, { onConflict: 'id' })
+
+      if (insertError) {
+        console.error('Insert error:', insertError)
+        toast.error('حدث خطأ في حفظ البيانات')
+        setLoading(false)
         return
       }
 
       toast.success('تم التسجيل بنجاح!')
       
-      // توجيه حسب نوع العضوية
+      // انتظر قليلاً ثم انتقل
+      await new Promise(resolve => setTimeout(resolve, 500))
+
       if (formData.member_type === 'player') {
-        navigate('/profile')
+        window.location.href = '/profile'
       } else {
-        navigate('/upload-documents')
+        window.location.href = '/upload-documents'
       }
     } catch (err) {
       toast.error('حدث خطأ غير متوقع')
-    } finally {
       setLoading(false)
     }
   }
@@ -386,6 +430,19 @@ export function Register() {
                   <p className="text-white font-bold" dir="ltr">{formData.email}</p>
                 </div>
 
+                {/* Countdown Timer */}
+                <div className="text-center mb-4">
+                  {countdown > 0 ? (
+                    <p className="text-yellow-400 text-lg">
+                      ⏱️ صلاحية الرمز: {formatTime(countdown)}
+                    </p>
+                  ) : (
+                    <p className="text-red-400">
+                      ⚠️ انتهت صلاحية الرمز
+                    </p>
+                  )}
+                </div>
+
                 <input
                   type="text"
                   value={otp}
@@ -398,7 +455,7 @@ export function Register() {
 
                 <button
                   type="submit"
-                  disabled={loading || otp.length !== 6}
+                  disabled={loading || otp.length !== 6 || countdown === 0}
                   className="w-full p-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium mt-4 disabled:opacity-50"
                 >
                   {loading ? 'جاري التحقق...' : 'تأكيد'}
@@ -412,14 +469,16 @@ export function Register() {
                   ← رجوع
                 </button>
 
-                <button
-                  type="button"
-                  onClick={sendOtp}
-                  disabled={loading}
-                  className="w-full p-3 text-green-400 hover:text-green-300 mt-2"
-                >
-                  إعادة إرسال الرمز
-                </button>
+                {countdown === 0 && (
+                  <button
+                    type="button"
+                    onClick={sendOtp}
+                    disabled={loading}
+                    className="w-full p-3 text-green-400 hover:text-green-300 mt-2"
+                  >
+                    إعادة إرسال الرمز
+                  </button>
+                )}
               </form>
             )}
           </div>
