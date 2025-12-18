@@ -13,13 +13,13 @@ import { AccountSuspended } from './pages/auth/AccountSuspended'
 
 // Main Pages
 import { Home } from './pages/Home'
+import { Profile } from './pages/Profile'
 
 function App() {
   return (
     <AuthProvider>
       <Router>
         <div className="min-h-screen bg-gray-900 text-white" dir="rtl">
-          {/* Navbar يظهر في كل الصفحات */}
           <Navbar />
           
           <Routes>
@@ -34,8 +34,8 @@ function App() {
             <Route path="/account-rejected" element={<AccountRejected />} />
             <Route path="/account-suspended" element={<AccountSuspended />} />
             
-            {/* صفحة البروفايل - مؤقتاً توجه للرئيسية */}
-            <Route path="/profile" element={<Home />} />
+            {/* صفحة البروفايل */}
+            <Route path="/profile" element={<Profile />} />
           </Routes>
           
           <Toaster 
@@ -68,3 +68,17 @@ function App() {
 }
 
 export default App
+```
+
+**اضغط Commit changes**
+
+---
+
+**ثم انتظر دقيقة واضغط:**
+```
+Ctrl + Shift + R
+```
+
+**وافتح:**
+```
+https://saudi-billiards.vercel.app/profile
