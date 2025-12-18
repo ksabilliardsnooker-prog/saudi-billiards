@@ -16,7 +16,7 @@ export function Profile() {
   const [emailOtp, setEmailOtp] = useState('')
   const [emailOtpSent, setEmailOtpSent] = useState(false)
   const [emailLoading, setEmailLoading] = useState(false)
-  const [countdown, setCountdown] = useState(0)
+  const [emailCountdown, setEmailCountdown] = useState(0)
 
   const [formData, setFormData] = useState({
     first_name: '',
@@ -50,13 +50,19 @@ export function Profile() {
     }
   }, [user, profile, navigate])
 
-  // Countdown timer
+  // Email countdown timer
   useEffect(() => {
-    if (countdown > 0) {
-      const timer = setTimeout(() => setCountdown(countdown - 1), 1000)
+    if (emailCountdown > 0) {
+      const timer = setTimeout(() => setEmailCountdown(emailCountdown - 1), 1000)
       return () => clearTimeout(timer)
     }
-  }, [countdown])
+  }, [emailCountdown])
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
@@ -141,6 +147,18 @@ export function Profile() {
       return
     }
 
+    // Check if email already exists
+    const { data: emailExists } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', newEmail)
+      .single()
+
+    if (emailExists) {
+      toast.error('البريد الإلكتروني مستخدم من حساب آخر')
+      return
+    }
+
     setEmailLoading(true)
     try {
       const { error } = await supabase.auth.updateUser({
@@ -154,7 +172,7 @@ export function Profile() {
 
       toast.success('تم إرسال رمز التحقق إلى البريد الجديد')
       setEmailOtpSent(true)
-      setCountdown(60)
+      setEmailCountdown(60)
     } catch (error) {
       toast.error('حدث خطأ في إرسال الرمز')
     } finally {
@@ -166,6 +184,11 @@ export function Profile() {
   const verifyEmailOtp = async () => {
     if (emailOtp.length !== 6) {
       toast.error('رمز التحقق يجب أن يكون 6 أرقام')
+      return
+    }
+
+    if (emailCountdown === 0) {
+      toast.error('انتهت صلاحية الرمز، أعد الإرسال')
       return
     }
 
@@ -189,10 +212,7 @@ export function Profile() {
         .eq('id', user?.id)
 
       toast.success('تم تغيير البريد الإلكتروني بنجاح')
-      setShowEmailChange(false)
-      setNewEmail('')
-      setEmailOtp('')
-      setEmailOtpSent(false)
+      cancelEmailChange()
       await refreshProfile()
     } catch (error) {
       toast.error('حدث خطأ في تغيير البريد')
@@ -206,13 +226,7 @@ export function Profile() {
     setNewEmail('')
     setEmailOtp('')
     setEmailOtpSent(false)
-    setCountdown(0)
-  }
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, '0')}`
+    setEmailCountdown(0)
   }
 
   const cities = ['الرياض', 'جدة', 'مكة المكرمة', 'المدينة المنورة', 'الدمام', 'الخبر', 'الظهران', 'الطائف', 'تبوك', 'بريدة', 'أبها', 'خميس مشيط', 'حائل', 'نجران', 'جازان', 'ينبع', 'الجبيل', 'الأحساء', 'القطيف', 'أخرى']
@@ -291,23 +305,31 @@ export function Profile() {
         {/* Email Change Section */}
         <div className="bg-gray-800 rounded-xl p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-white">البريد الإلكتروني</h2>
+            <h2 className="text-xl font-bold text-white">← تغيير البريد الإلكتروني</h2>
             {!showEmailChange && (
               <button
                 onClick={() => setShowEmailChange(true)}
                 className="text-green-400 hover:text-green-300 text-sm"
               >
-                تغيير البريد
+                تغيير
               </button>
             )}
           </div>
 
           {!showEmailChange ? (
-            <p className="text-gray-300" dir="ltr">{profile?.email}</p>
+            <div className="p-3 bg-gray-700 rounded-lg">
+              <p className="text-gray-300" dir="ltr">{profile?.email}</p>
+            </div>
           ) : (
             <div className="space-y-4">
               {!emailOtpSent ? (
                 <>
+                  <div>
+                    <label className="block text-gray-400 text-sm mb-2">البريد الإلكتروني الحالي</label>
+                    <div className="p-3 bg-gray-700/50 rounded-lg">
+                      <p className="text-gray-400" dir="ltr">{profile?.email}</p>
+                    </div>
+                  </div>
                   <div>
                     <label className="block text-gray-400 text-sm mb-2">البريد الإلكتروني الجديد</label>
                     <input
@@ -340,13 +362,16 @@ export function Profile() {
                   <div className="text-center p-4 bg-gray-700 rounded-lg">
                     <p className="text-gray-300 text-sm">تم إرسال رمز التحقق إلى:</p>
                     <p className="text-white font-bold" dir="ltr">{newEmail}</p>
-                    {countdown > 0 && (
-                      <p className="text-yellow-400 mt-2">
-                        ⏱️ الرمز صالح لمدة: {formatTime(countdown)}
+                  </div>
+
+                  {/* Countdown Timer */}
+                  <div className="text-center">
+                    {emailCountdown > 0 ? (
+                      <p className="text-yellow-400 text-lg">
+                        ⏱️ صلاحية الرمز: {formatTime(emailCountdown)}
                       </p>
-                    )}
-                    {countdown === 0 && emailOtpSent && (
-                      <p className="text-red-400 mt-2">
+                    ) : (
+                      <p className="text-red-400">
                         ⚠️ انتهت صلاحية الرمز
                       </p>
                     )}
@@ -371,14 +396,14 @@ export function Profile() {
                     </button>
                     <button
                       onClick={verifyEmailOtp}
-                      disabled={emailLoading || emailOtp.length !== 6 || countdown === 0}
+                      disabled={emailLoading || emailOtp.length !== 6 || emailCountdown === 0}
                       className="flex-1 p-3 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50"
                     >
                       {emailLoading ? 'جاري التحقق...' : 'تأكيد'}
                     </button>
                   </div>
 
-                  {countdown === 0 && (
+                  {emailCountdown === 0 && (
                     <button
                       onClick={sendEmailOtp}
                       disabled={emailLoading}
@@ -529,3 +554,12 @@ export function Profile() {
     </div>
   )
 }
+```
+
+**اضغط Commit changes**
+
+---
+
+**انتظر دقيقة ثم جرّب صفحة البروفايل:**
+```
+https://saudi-billiards.vercel.app/profile
