@@ -26,6 +26,7 @@ export interface User {
   social_twitter?: string
   social_instagram?: string
   social_snapchat?: string
+  has_password?: boolean
   created_at: string
   updated_at: string
 }
@@ -113,7 +114,6 @@ export interface MarketplaceAd {
   views: number
   created_at: string
   updated_at: string
-  // Joined data
   user?: User
 }
 
@@ -146,7 +146,6 @@ export interface Tournament {
   winner_second?: string
   winner_third?: string
   created_at: string
-  // Joined data
   club?: ClubInfo
 }
 
@@ -158,7 +157,6 @@ export interface TournamentRegistration {
   team_members?: string[]
   registered_at: string
   status: 'registered' | 'confirmed' | 'cancelled'
-  // Joined data
   user?: User
 }
 
@@ -174,7 +172,6 @@ export interface TournamentMatch {
   score_player1?: number
   score_player2?: number
   played_at?: string
-  // Joined data
   player1?: User
   player2?: User
 }
@@ -197,7 +194,6 @@ export interface Course {
   location?: string
   status: 'upcoming' | 'ongoing' | 'completed' | 'cancelled'
   created_at: string
-  // Joined data
   coach?: User & { coach_info?: CoachInfo }
 }
 
@@ -207,7 +203,6 @@ export interface CourseRegistration {
   user_id: string
   registered_at: string
   status: 'registered' | 'confirmed' | 'cancelled' | 'completed'
-  // Joined data
   user?: User
 }
 
@@ -225,7 +220,6 @@ export interface ClubOffer {
   image_url?: string
   status: 'active' | 'expired' | 'deleted'
   created_at: string
-  // Joined data
   club?: ClubInfo
 }
 
@@ -253,7 +247,6 @@ export interface Review {
   rating: number
   comment?: string
   created_at: string
-  // Joined data
   reviewer?: User
 }
 
