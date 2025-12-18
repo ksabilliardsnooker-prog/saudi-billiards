@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState, useRef } from 'react'
 import type { ReactNode } from 'react'
 import type { User as SupabaseUser, Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
@@ -20,78 +20,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SupabaseUser | null>(null)
   const [profile, setProfile] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const initialized = useRef(false)
 
   const fetchProfile = async (userId: string): Promise<User | null> => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('users')
       .select('*')
       .eq('id', userId)
       .single()
-
-    if (error) {
-      console.error('Error fetching profile:', error)
-      return null
-    }
-    return data as User
+    return data as User | null
   }
 
   const refreshProfile = async () => {
     if (user) {
       const data = await fetchProfile(user.id)
-      setProfile(data)
+      if (data) setProfile(data)
     }
   }
 
   useEffect(() => {
-    let isMounted = true
+    if (initialized.current) return
+    initialized.current = true
 
     const init = async () => {
       const { data: { session: s } } = await supabase.auth.getSession()
-      
-      if (!isMounted) return
 
       if (s?.user) {
         setSession(s)
         setUser(s.user)
         const p = await fetchProfile(s.user.id)
-        if (isMounted) setProfile(p)
+        setProfile(p)
       }
       
-      if (isMounted) setLoading(false)
+      setLoading(false)
     }
 
     init()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, s) => {
-        if (!isMounted) return
-
         if (event === 'SIGNED_OUT') {
           setSession(null)
           setUser(null)
           setProfile(null)
-        } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-          if (s?.user) {
-            setSession(s)
-            setUser(s.user)
-            const p = await fetchProfile(s.user.id)
-            if (isMounted) setProfile(p)
-          }
+        } else if (event === 'SIGNED_IN' && s?.user) {
+          setSession(s)
+          setUser(s.user)
+          const p = await fetchProfile(s.user.id)
+          setProfile(p)
         }
       }
     )
 
-    return () => {
-      isMounted = false
-      subscription.unsubscribe()
-    }
+    return () => subscription.unsubscribe()
   }, [])
 
   const signOut = async () => {
     await supabase.auth.signOut()
-    setSession(null)
-    setUser(null)
-    setProfile(null)
   }
 
   return (
