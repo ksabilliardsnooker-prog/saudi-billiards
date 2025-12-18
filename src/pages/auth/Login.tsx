@@ -1,59 +1,146 @@
 import { useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { useNavigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
 
-export function Login() {
+export function Profile() {
   const navigate = useNavigate()
+  const { user, profile, refreshProfile } = useAuth()
   const [loading, setLoading] = useState(false)
-  const [otpSent, setOtpSent] = useState(false)
-  const [email, setEmail] = useState('')
-  const [otp, setOtp] = useState('')
-  const [countdown, setCountdown] = useState(0)
+  const [uploading, setUploading] = useState(false)
+  
+  // Password states
+  const [showPasswordSection, setShowPasswordSection] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordLoading, setPasswordLoading] = useState(false)
+  const [hasPassword, setHasPassword] = useState(false)
+
+  const [formData, setFormData] = useState({
+    first_name: '',
+    last_name: '',
+    club_name: '',
+    phone: '',
+    city: '',
+    bio: '',
+    social_twitter: '',
+    social_instagram: '',
+    social_snapchat: ''
+  })
 
   useEffect(() => {
-    if (countdown > 0) {
-      const timer = setTimeout(() => setCountdown(countdown - 1), 1000)
-      return () => clearTimeout(timer)
-    }
-  }, [countdown])
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, '0')}`
-  }
-
-  const checkEmailExists = async () => {
-    const { data } = await supabase
-      .from('users')
-      .select('id, account_status, member_type')
-      .eq('email', email)
-      .single()
-    
-    return data
-  }
-
-  const sendOtp = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault()
-    
-    if (!email) {
-      toast.error('أدخل البريد الإلكتروني')
+    if (!user) {
+      navigate('/login')
       return
     }
+    if (profile) {
+      setFormData({
+        first_name: profile.first_name || '',
+        last_name: profile.last_name || '',
+        club_name: profile.club_name || '',
+        phone: profile.phone || '',
+        city: profile.city || '',
+        bio: profile.bio || '',
+        social_twitter: profile.social_twitter || '',
+        social_instagram: profile.social_instagram || '',
+        social_snapchat: profile.social_snapchat || ''
+      })
+      setHasPassword(profile.has_password || false)
+    }
+  }, [user, profile, navigate])
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value })
+  }
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !user) return
+
+    setUploading(true)
+    try {
+      const fileExt = file.name.split('.').pop()
+      const fileName = `${user.id}/avatar.${fileExt}`
+
+      await supabase.storage.from('avatars').remove([fileName])
+
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, file, { upsert: true })
+
+      if (uploadError) throw uploadError
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName)
+
+      await supabase
+        .from('users')
+        .update({ avatar_url: publicUrl })
+        .eq('id', user.id)
+
+      await refreshProfile()
+      toast.success('تم تحديث الصورة بنجاح')
+    } catch (error) {
+      toast.error('حدث خطأ في رفع الصورة')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user) return
 
     setLoading(true)
     try {
-      const user = await checkEmailExists()
-      
-      if (!user) {
-        toast.error('البريد الإلكتروني غير مسجل. سجل حساب جديد')
-        setLoading(false)
-        return
-      }
+      const { error } = await supabase
+        .from('users')
+        .update({
+          first_name: formData.first_name,
+          last_name: formData.last_name,
+          club_name: formData.club_name,
+          phone: formData.phone,
+          city: formData.city,
+          bio: formData.bio,
+          social_twitter: formData.social_twitter,
+          social_instagram: formData.social_instagram,
+          social_snapchat: formData.social_snapchat
+        })
+        .eq('id', user.id)
 
-      const { error } = await supabase.auth.signInWithOtp({
-        email: email
+      if (error) throw error
+
+      await refreshProfile()
+      toast.success('تم حفظ البيانات بنجاح')
+    } catch (error) {
+      toast.error('حدث خطأ في حفظ البيانات')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSetPassword = async () => {
+    if (!newPassword) {
+      toast.error('أدخل كلمة المرور')
+      return
+    }
+    
+    if (newPassword.length < 6) {
+      toast.error('كلمة المرور يجب أن تكون 6 أحرف على الأقل')
+      return
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast.error('كلمة المرور غير متطابقة')
+      return
+    }
+
+    setPasswordLoading(true)
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
       })
 
       if (error) {
@@ -61,209 +148,303 @@ export function Login() {
         return
       }
 
-      toast.success('تم إرسال رمز الدخول إلى بريدك الإلكتروني')
-      setOtpSent(true)
-      setCountdown(60)
-    } catch (err) {
-      toast.error('حدث خطأ غير متوقع')
+      await supabase
+        .from('users')
+        .update({ has_password: true })
+        .eq('id', user?.id)
+
+      toast.success(hasPassword ? 'تم تغيير كلمة المرور بنجاح' : 'تم إضافة كلمة المرور بنجاح')
+      setShowPasswordSection(false)
+      setNewPassword('')
+      setConfirmPassword('')
+      setHasPassword(true)
+      await refreshProfile()
+    } catch (error) {
+      toast.error('حدث خطأ')
     } finally {
-      setLoading(false)
+      setPasswordLoading(false)
     }
   }
 
-  const verifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (otp.length !== 6) {
-      toast.error('رمز التحقق يجب أن يكون 6 أرقام')
-      return
-    }
+  const cities = ['الرياض', 'جدة', 'مكة المكرمة', 'المدينة المنورة', 'الدمام', 'الخبر', 'الظهران', 'الطائف', 'تبوك', 'بريدة', 'أبها', 'خميس مشيط', 'حائل', 'نجران', 'جازان', 'ينبع', 'الجبيل', 'الأحساء', 'القطيف', 'أخرى']
 
-    if (countdown === 0) {
-      toast.error('انتهت صلاحية الرمز، أعد الإرسال')
-      return
-    }
-
-    setLoading(true)
-    try {
-      const { data, error } = await supabase.auth.verifyOtp({
-        email: email,
-        token: otp,
-        type: 'email'
-      })
-
-      if (error) {
-        toast.error('رمز التحقق غير صحيح')
-        setLoading(false)
-        return
-      }
-
-      // تأكد من وجود الـ session
-      if (!data.session) {
-        toast.error('حدث خطأ في تسجيل الدخول')
-        setLoading(false)
-        return
-      }
-
-      // انتظر قليلاً ليتم حفظ الـ session
-      await new Promise(resolve => setTimeout(resolve, 500))
-
-      const user = await checkEmailExists()
-      
-      toast.success('تم تسجيل الدخول بنجاح!')
-
-      // تحديد وجهة التنقل
-      let destination = '/'
-      
-      if (user) {
-        if (user.member_type === 'player') {
-          destination = '/'
-        } else {
-          switch (user.account_status) {
-            case 'pending':
-              destination = '/upload-documents'
-              break
-            case 'under_review':
-              destination = '/pending-review'
-              break
-            case 'returned':
-              destination = '/upload-documents'
-              break
-            case 'approved':
-            case 'active':
-              destination = '/'
-              break
-            case 'rejected':
-              destination = '/account-rejected'
-              break
-            case 'suspended':
-              destination = '/account-suspended'
-              break
-            default:
-              destination = '/'
-          }
-        }
-      }
-
-      // استخدم window.location للتأكد من إعادة تحميل الصفحة
-      window.location.href = destination
-
-    } catch (err) {
-      toast.error('حدث خطأ غير متوقع')
-      setLoading(false)
+  const getMemberTypeLabel = () => {
+    switch (profile?.member_type) {
+      case 'player': return 'لاعب'
+      case 'coach': return 'مدرب'
+      case 'club': return 'نادي/صالة'
+      default: return ''
     }
   }
 
-  const handleBack = () => {
-    setOtpSent(false)
-    setOtp('')
-    setCountdown(0)
+  const getStatusLabel = () => {
+    switch (profile?.account_status) {
+      case 'active': return { text: 'فعّال', color: 'bg-green-500' }
+      case 'pending': return { text: 'في انتظار التفعيل', color: 'bg-yellow-500' }
+      case 'under_review': return { text: 'قيد المراجعة', color: 'bg-blue-500' }
+      case 'suspended': return { text: 'موقوف', color: 'bg-red-500' }
+      default: return { text: '', color: '' }
+    }
   }
+
+  const isClub = profile?.member_type === 'club'
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gray-900">
-      <div className="w-full max-w-md bg-gray-800 rounded-xl p-8">
+    <div className="min-h-screen bg-gray-900 py-8">
+      <div className="max-w-3xl mx-auto px-4">
         
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
-            <span className="text-3xl">🎱</span>
+        {/* Header */}
+        <div className="bg-gray-800 rounded-xl p-6 mb-6">
+          <div className="flex items-center gap-6">
+            <div className="relative">
+              <div className="w-24 h-24 rounded-full bg-gray-700 overflow-hidden">
+                {profile?.avatar_url ? (
+                  <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-4xl">
+                    {isClub ? '🏢' : '👤'}
+                  </div>
+                )}
+              </div>
+              <label className="absolute bottom-0 right-0 w-8 h-8 bg-green-600 rounded-full flex items-center justify-center cursor-pointer hover:bg-green-700">
+                {uploading ? (
+                  <span className="text-xs">⏳</span>
+                ) : (
+                  <span className="text-sm">📷</span>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarUpload}
+                  disabled={uploading}
+                  className="hidden"
+                />
+              </label>
+            </div>
+
+            <div className="flex-1">
+              <h1 className="text-2xl font-bold text-white">
+                {isClub ? profile?.club_name : `${profile?.first_name} ${profile?.last_name}`}
+              </h1>
+              <p className="text-gray-400">{profile?.email}</p>
+              <div className="flex items-center gap-3 mt-2">
+                <span className="px-3 py-1 bg-gray-700 rounded-full text-sm text-gray-300">
+                  {getMemberTypeLabel()}
+                </span>
+                <span className={`px-3 py-1 rounded-full text-sm text-white ${getStatusLabel().color}`}>
+                  {getStatusLabel().text}
+                </span>
+              </div>
+            </div>
           </div>
-          <h1 className="text-2xl font-bold text-white">
-            {otpSent ? 'أدخل رمز الدخول' : 'تسجيل الدخول'}
-          </h1>
-          <p className="text-gray-400 mt-2">
-            {otpSent ? 'تم إرسال رمز إلى بريدك الإلكتروني' : 'أدخل بريدك الإلكتروني للدخول'}
-          </p>
         </div>
 
-        {!otpSent ? (
-          <form onSubmit={sendOtp} className="space-y-4">
+        {/* Password Section */}
+        <div className="bg-gray-800 rounded-xl p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
             <div>
-              <label className="block text-gray-400 text-sm mb-2">البريد الإلكتروني</label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="example@email.com"
-                dir="ltr"
-                className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
+              <h2 className="text-xl font-bold text-white">كلمة المرور</h2>
+              <p className="text-gray-400 text-sm mt-1">
+                {hasPassword ? 'يمكنك الدخول بكلمة المرور أو بالرمز' : 'أضف كلمة مرور للدخول السريع'}
+              </p>
+            </div>
+            {!showPasswordSection && (
+              <button
+                onClick={() => setShowPasswordSection(true)}
+                className="text-green-400 hover:text-green-300 text-sm"
+              >
+                {hasPassword ? 'تغيير' : 'إضافة'}
+              </button>
+            )}
+          </div>
+
+          {!showPasswordSection ? (
+            <div className="p-3 bg-gray-700 rounded-lg flex items-center gap-3">
+              <span className="text-2xl">{hasPassword ? '🔒' : '🔓'}</span>
+              <p className="text-gray-300">
+                {hasPassword ? 'كلمة المرور مفعّلة' : 'لم تضف كلمة مرور بعد'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-gray-400 text-sm mb-2">
+                  {hasPassword ? 'كلمة المرور الجديدة' : 'كلمة المرور'}
+                </label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-gray-400 text-sm mb-2">تأكيد كلمة المرور</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                />
+              </div>
+              <p className="text-gray-500 text-sm">* 6 أحرف على الأقل</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowPasswordSection(false)
+                    setNewPassword('')
+                    setConfirmPassword('')
+                  }}
+                  className="flex-1 p-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+                >
+                  إلغاء
+                </button>
+                <button
+                  onClick={handleSetPassword}
+                  disabled={passwordLoading}
+                  className="flex-1 p-3 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50"
+                >
+                  {passwordLoading ? 'جاري الحفظ...' : 'حفظ'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="bg-gray-800 rounded-xl p-6">
+          <h2 className="text-xl font-bold text-white mb-6">البيانات الشخصية</h2>
+
+          <div className="space-y-4">
+            {isClub ? (
+              <div>
+                <label className="block text-gray-400 text-sm mb-2">اسم النادي/الصالة</label>
+                <input
+                  type="text"
+                  name="club_name"
+                  value={formData.club_name}
+                  onChange={handleChange}
+                  className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                />
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-gray-400 text-sm mb-2">الاسم الأول</label>
+                  <input
+                    type="text"
+                    name="first_name"
+                    value={formData.first_name}
+                    onChange={handleChange}
+                    className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-400 text-sm mb-2">الاسم الأخير</label>
+                  <input
+                    type="text"
+                    name="last_name"
+                    value={formData.last_name}
+                    onChange={handleChange}
+                    className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-gray-400 text-sm mb-2">رقم الجوال</label>
+                <input
+                  type="tel"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  dir="ltr"
+                  className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-gray-400 text-sm mb-2">المدينة</label>
+                <select
+                  name="city"
+                  value={formData.city}
+                  onChange={handleChange}
+                  className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                >
+                  <option value="">اختر المدينة</option>
+                  {cities.map((city) => (
+                    <option key={city} value={city}>{city}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-gray-400 text-sm mb-2">نبذة عنك</label>
+              <textarea
+                name="bio"
+                value={formData.bio}
+                onChange={handleChange}
+                rows={4}
+                placeholder={isClub ? 'اكتب نبذة عن النادي...' : 'اكتب نبذة عنك...'}
+                className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white resize-none"
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full p-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium disabled:opacity-50"
-            >
-              {loading ? 'جاري الإرسال...' : 'إرسال رمز الدخول'}
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={verifyOtp} className="space-y-4">
-            <div className="text-center p-4 bg-gray-700 rounded-lg mb-4">
-              <p className="text-gray-300 text-sm">تم الإرسال إلى:</p>
-              <p className="text-white font-bold" dir="ltr">{email}</p>
+            <div>
+              <h3 className="text-lg font-bold text-white mb-4">حسابات التواصل الاجتماعي</h3>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl w-8">𝕏</span>
+                  <input
+                    type="text"
+                    name="social_twitter"
+                    value={formData.social_twitter}
+                    onChange={handleChange}
+                    placeholder="اسم المستخدم في X"
+                    dir="ltr"
+                    className="flex-1 p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl w-8">📷</span>
+                  <input
+                    type="text"
+                    name="social_instagram"
+                    value={formData.social_instagram}
+                    onChange={handleChange}
+                    placeholder="اسم المستخدم في Instagram"
+                    dir="ltr"
+                    className="flex-1 p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl w-8">👻</span>
+                  <input
+                    type="text"
+                    name="social_snapchat"
+                    value={formData.social_snapchat}
+                    onChange={handleChange}
+                    placeholder="اسم المستخدم في Snapchat"
+                    dir="ltr"
+                    className="flex-1 p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                  />
+                </div>
+              </div>
             </div>
+          </div>
 
-            <div className="text-center mb-4">
-              {countdown > 0 ? (
-                <p className="text-yellow-400 text-lg">
-                  ⏱️ صلاحية الرمز: {formatTime(countdown)}
-                </p>
-              ) : (
-                <p className="text-red-400">
-                  ⚠️ انتهت صلاحية الرمز
-                </p>
-              )}
-            </div>
-
-            <input
-              type="text"
-              value={otp}
-              onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              placeholder="000000"
-              maxLength={6}
-              className="w-full p-4 bg-gray-700 border border-gray-600 rounded-lg text-white text-center text-2xl tracking-widest"
-              dir="ltr"
-            />
-
-            <button
-              type="submit"
-              disabled={loading || otp.length !== 6 || countdown === 0}
-              className="w-full p-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium disabled:opacity-50"
-            >
-              {loading ? 'جاري التحقق...' : 'دخول'}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleBack}
-              className="w-full p-3 text-gray-400 hover:text-white"
-            >
-              ← رجوع
-            </button>
-
-            {countdown === 0 && (
-              <button
-                type="button"
-                onClick={() => sendOtp()}
-                disabled={loading}
-                className="w-full p-3 text-green-400 hover:text-green-300"
-              >
-                إعادة إرسال الرمز
-              </button>
-            )}
-          </form>
-        )}
-
-        <div className="mt-8 pt-6 border-t border-gray-700">
-          <p className="text-center text-gray-400">
-            ليس لديك حساب؟{' '}
-            <Link to="/register" className="text-green-400 hover:underline">
-              سجل الآن
-            </Link>
-          </p>
-        </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full mt-6 p-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium disabled:opacity-50"
+          >
+            {loading ? 'جاري الحفظ...' : 'حفظ التغييرات'}
+          </button>
+        </form>
       </div>
     </div>
   )
