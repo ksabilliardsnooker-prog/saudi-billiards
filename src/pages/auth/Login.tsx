@@ -11,7 +11,6 @@ export function Login() {
   const [otp, setOtp] = useState('')
   const [countdown, setCountdown] = useState(0)
 
-  // Countdown timer
   useEffect(() => {
     if (countdown > 0) {
       const timer = setTimeout(() => setCountdown(countdown - 1), 1000)
@@ -87,7 +86,7 @@ export function Login() {
 
     setLoading(true)
     try {
-      const { error } = await supabase.auth.verifyOtp({
+      const { data, error } = await supabase.auth.verifyOtp({
         email: email,
         token: otp,
         type: 'email'
@@ -95,48 +94,62 @@ export function Login() {
 
       if (error) {
         toast.error('رمز التحقق غير صحيح')
+        setLoading(false)
         return
       }
+
+      // تأكد من وجود الـ session
+      if (!data.session) {
+        toast.error('حدث خطأ في تسجيل الدخول')
+        setLoading(false)
+        return
+      }
+
+      // انتظر قليلاً ليتم حفظ الـ session
+      await new Promise(resolve => setTimeout(resolve, 500))
 
       const user = await checkEmailExists()
       
-      if (!user) {
-        navigate('/')
-        return
-      }
-
       toast.success('تم تسجيل الدخول بنجاح!')
 
-      if (user.member_type === 'player') {
-        navigate('/')
-      } else {
-        switch (user.account_status) {
-          case 'pending':
-            navigate('/upload-documents')
-            break
-          case 'under_review':
-            navigate('/pending-review')
-            break
-          case 'returned':
-            navigate('/upload-documents')
-            break
-          case 'approved':
-          case 'active':
-            navigate('/')
-            break
-          case 'rejected':
-            navigate('/account-rejected')
-            break
-          case 'suspended':
-            navigate('/account-suspended')
-            break
-          default:
-            navigate('/')
+      // تحديد وجهة التنقل
+      let destination = '/'
+      
+      if (user) {
+        if (user.member_type === 'player') {
+          destination = '/'
+        } else {
+          switch (user.account_status) {
+            case 'pending':
+              destination = '/upload-documents'
+              break
+            case 'under_review':
+              destination = '/pending-review'
+              break
+            case 'returned':
+              destination = '/upload-documents'
+              break
+            case 'approved':
+            case 'active':
+              destination = '/'
+              break
+            case 'rejected':
+              destination = '/account-rejected'
+              break
+            case 'suspended':
+              destination = '/account-suspended'
+              break
+            default:
+              destination = '/'
+          }
         }
       }
+
+      // استخدم window.location للتأكد من إعادة تحميل الصفحة
+      window.location.href = destination
+
     } catch (err) {
       toast.error('حدث خطأ غير متوقع')
-    } finally {
       setLoading(false)
     }
   }
@@ -192,7 +205,6 @@ export function Login() {
               <p className="text-white font-bold" dir="ltr">{email}</p>
             </div>
 
-            {/* Countdown Timer */}
             <div className="text-center mb-4">
               {countdown > 0 ? (
                 <p className="text-yellow-400 text-lg">
