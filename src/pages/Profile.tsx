@@ -10,13 +10,12 @@ export function Profile() {
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   
-  // Email change states
-  const [showEmailChange, setShowEmailChange] = useState(false)
-  const [newEmail, setNewEmail] = useState('')
-  const [emailOtp, setEmailOtp] = useState('')
-  const [emailOtpSent, setEmailOtpSent] = useState(false)
-  const [emailLoading, setEmailLoading] = useState(false)
-  const [emailCountdown, setEmailCountdown] = useState(0)
+  // Password states
+  const [showPasswordSection, setShowPasswordSection] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordLoading, setPasswordLoading] = useState(false)
+  const [hasPassword, setHasPassword] = useState(false)
 
   const [formData, setFormData] = useState({
     first_name: '',
@@ -48,20 +47,20 @@ export function Profile() {
         social_snapchat: profile.social_snapchat || ''
       })
     }
+    checkIfHasPassword()
   }, [user, profile, navigate])
 
-  // Email countdown timer
-  useEffect(() => {
-    if (emailCountdown > 0) {
-      const timer = setTimeout(() => setEmailCountdown(emailCountdown - 1), 1000)
-      return () => clearTimeout(timer)
+  const checkIfHasPassword = async () => {
+    if (!user) return
+    const { data } = await supabase
+      .from('users')
+      .select('has_password')
+      .eq('id', user.id)
+      .single()
+    
+    if (data) {
+      setHasPassword(data.has_password || false)
     }
-  }, [emailCountdown])
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -135,34 +134,26 @@ export function Profile() {
     }
   }
 
-  // Send OTP for email change
-  const sendEmailOtp = async () => {
-    if (!newEmail) {
-      toast.error('أدخل البريد الإلكتروني الجديد')
+  const handleSetPassword = async () => {
+    if (!newPassword) {
+      toast.error('أدخل كلمة المرور')
+      return
+    }
+    
+    if (newPassword.length < 6) {
+      toast.error('كلمة المرور يجب أن تكون 6 أحرف على الأقل')
       return
     }
 
-    if (newEmail === profile?.email) {
-      toast.error('البريد الجديد مطابق للبريد الحالي')
+    if (newPassword !== confirmPassword) {
+      toast.error('كلمة المرور غير متطابقة')
       return
     }
 
-    // Check if email already exists
-    const { data: emailExists } = await supabase
-      .from('users')
-      .select('id')
-      .eq('email', newEmail)
-      .single()
-
-    if (emailExists) {
-      toast.error('البريد الإلكتروني مستخدم من حساب آخر')
-      return
-    }
-
-    setEmailLoading(true)
+    setPasswordLoading(true)
     try {
       const { error } = await supabase.auth.updateUser({
-        email: newEmail
+        password: newPassword
       })
 
       if (error) {
@@ -170,63 +161,21 @@ export function Profile() {
         return
       }
 
-      toast.success('تم إرسال رمز التحقق إلى البريد الجديد')
-      setEmailOtpSent(true)
-      setEmailCountdown(60)
-    } catch (error) {
-      toast.error('حدث خطأ في إرسال الرمز')
-    } finally {
-      setEmailLoading(false)
-    }
-  }
-
-  // Verify OTP and change email
-  const verifyEmailOtp = async () => {
-    if (emailOtp.length !== 6) {
-      toast.error('رمز التحقق يجب أن يكون 6 أرقام')
-      return
-    }
-
-    if (emailCountdown === 0) {
-      toast.error('انتهت صلاحية الرمز، أعد الإرسال')
-      return
-    }
-
-    setEmailLoading(true)
-    try {
-      const { error } = await supabase.auth.verifyOtp({
-        email: newEmail,
-        token: emailOtp,
-        type: 'email_change'
-      })
-
-      if (error) {
-        toast.error('رمز التحقق غير صحيح')
-        return
-      }
-
-      // Update email in users table
       await supabase
         .from('users')
-        .update({ email: newEmail })
+        .update({ has_password: true })
         .eq('id', user?.id)
 
-      toast.success('تم تغيير البريد الإلكتروني بنجاح')
-      cancelEmailChange()
-      await refreshProfile()
+      toast.success(hasPassword ? 'تم تغيير كلمة المرور بنجاح' : 'تم إضافة كلمة المرور بنجاح')
+      setShowPasswordSection(false)
+      setNewPassword('')
+      setConfirmPassword('')
+      setHasPassword(true)
     } catch (error) {
-      toast.error('حدث خطأ في تغيير البريد')
+      toast.error('حدث خطأ')
     } finally {
-      setEmailLoading(false)
+      setPasswordLoading(false)
     }
-  }
-
-  const cancelEmailChange = () => {
-    setShowEmailChange(false)
-    setNewEmail('')
-    setEmailOtp('')
-    setEmailOtpSent(false)
-    setEmailCountdown(0)
   }
 
   const cities = ['الرياض', 'جدة', 'مكة المكرمة', 'المدينة المنورة', 'الدمام', 'الخبر', 'الظهران', 'الطائف', 'تبوك', 'بريدة', 'أبها', 'خميس مشيط', 'حائل', 'نجران', 'جازان', 'ينبع', 'الجبيل', 'الأحساء', 'القطيف', 'أخرى']
@@ -302,118 +251,76 @@ export function Profile() {
           </div>
         </div>
 
-        {/* Email Change Section */}
+        {/* Password Section */}
         <div className="bg-gray-800 rounded-xl p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-white">← تغيير البريد الإلكتروني</h2>
-            {!showEmailChange && (
+            <div>
+              <h2 className="text-xl font-bold text-white">كلمة المرور</h2>
+              <p className="text-gray-400 text-sm mt-1">
+                {hasPassword ? 'يمكنك الدخول بكلمة المرور أو بالرمز' : 'أضف كلمة مرور للدخول السريع'}
+              </p>
+            </div>
+            {!showPasswordSection && (
               <button
-                onClick={() => setShowEmailChange(true)}
+                onClick={() => setShowPasswordSection(true)}
                 className="text-green-400 hover:text-green-300 text-sm"
               >
-                تغيير
+                {hasPassword ? 'تغيير' : 'إضافة'}
               </button>
             )}
           </div>
 
-          {!showEmailChange ? (
-            <div className="p-3 bg-gray-700 rounded-lg">
-              <p className="text-gray-300" dir="ltr">{profile?.email}</p>
+          {!showPasswordSection ? (
+            <div className="p-3 bg-gray-700 rounded-lg flex items-center gap-3">
+              <span className="text-2xl">{hasPassword ? '🔒' : '🔓'}</span>
+              <p className="text-gray-300">
+                {hasPassword ? 'كلمة المرور مفعّلة' : 'لم تضف كلمة مرور بعد'}
+              </p>
             </div>
           ) : (
             <div className="space-y-4">
-              {!emailOtpSent ? (
-                <>
-                  <div>
-                    <label className="block text-gray-400 text-sm mb-2">البريد الإلكتروني الحالي</label>
-                    <div className="p-3 bg-gray-700/50 rounded-lg">
-                      <p className="text-gray-400" dir="ltr">{profile?.email}</p>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-gray-400 text-sm mb-2">البريد الإلكتروني الجديد</label>
-                    <input
-                      type="email"
-                      value={newEmail}
-                      onChange={(e) => setNewEmail(e.target.value)}
-                      placeholder="example@email.com"
-                      dir="ltr"
-                      className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
-                    />
-                  </div>
-                  <div className="flex gap-3">
-                    <button
-                      onClick={cancelEmailChange}
-                      className="flex-1 p-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
-                    >
-                      إلغاء
-                    </button>
-                    <button
-                      onClick={sendEmailOtp}
-                      disabled={emailLoading}
-                      className="flex-1 p-3 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50"
-                    >
-                      {emailLoading ? 'جاري الإرسال...' : 'إرسال رمز التحقق'}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="text-center p-4 bg-gray-700 rounded-lg">
-                    <p className="text-gray-300 text-sm">تم إرسال رمز التحقق إلى:</p>
-                    <p className="text-white font-bold" dir="ltr">{newEmail}</p>
-                  </div>
-
-                  {/* Countdown Timer */}
-                  <div className="text-center">
-                    {emailCountdown > 0 ? (
-                      <p className="text-yellow-400 text-lg">
-                        ⏱️ صلاحية الرمز: {formatTime(emailCountdown)}
-                      </p>
-                    ) : (
-                      <p className="text-red-400">
-                        ⚠️ انتهت صلاحية الرمز
-                      </p>
-                    )}
-                  </div>
-
-                  <input
-                    type="text"
-                    value={emailOtp}
-                    onChange={(e) => setEmailOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    placeholder="000000"
-                    maxLength={6}
-                    className="w-full p-4 bg-gray-700 border border-gray-600 rounded-lg text-white text-center text-2xl tracking-widest"
-                    dir="ltr"
-                  />
-
-                  <div className="flex gap-3">
-                    <button
-                      onClick={cancelEmailChange}
-                      className="flex-1 p-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
-                    >
-                      إلغاء
-                    </button>
-                    <button
-                      onClick={verifyEmailOtp}
-                      disabled={emailLoading || emailOtp.length !== 6 || emailCountdown === 0}
-                      className="flex-1 p-3 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50"
-                    >
-                      {emailLoading ? 'جاري التحقق...' : 'تأكيد'}
-                    </button>
-                  </div>
-
-                  {emailCountdown === 0 && (
-                    <button
-                      onClick={sendEmailOtp}
-                      disabled={emailLoading}
-                      className="w-full p-3 text-green-400 hover:text-green-300"
-                    >
-                      إعادة إرسال الرمز
-                    </button>
-                  )}
-                </>
-              )}
+              <div>
+                <label className="block text-gray-400 text-sm mb-2">
+                  {hasPassword ? 'كلمة المرور الجديدة' : 'كلمة المرور'}
+                </label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-gray-400 text-sm mb-2">تأكيد كلمة المرور</label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full p-3 bg-gray-700 border border-gray-600 rounded-lg text-white"
+                />
+              </div>
+              <p className="text-gray-500 text-sm">* 6 أحرف على الأقل</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowPasswordSection(false)
+                    setNewPassword('')
+                    setConfirmPassword('')
+                  }}
+                  className="flex-1 p-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+                >
+                  إلغاء
+                </button>
+                <button
+                  onClick={handleSetPassword}
+                  disabled={passwordLoading}
+                  className="flex-1 p-3 bg-green-600 hover:bg-green-700 text-white rounded-lg disabled:opacity-50"
+                >
+                  {passwordLoading ? 'جاري الحفظ...' : 'حفظ'}
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -554,12 +461,3 @@ export function Profile() {
     </div>
   )
 }
-```
-
-**اضغط Commit changes**
-
----
-
-**انتظر دقيقة ثم جرّب صفحة البروفايل:**
-```
-https://saudi-billiards.vercel.app/profile
