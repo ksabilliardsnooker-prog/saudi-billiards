@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider } from './contexts/AuthContext'
+import { Navbar } from './components/Navbar'
 
 // Auth Pages
 import { Register } from './pages/auth/Register'
@@ -18,6 +19,9 @@ function App() {
     <AuthProvider>
       <Router>
         <div className="min-h-screen bg-gray-900 text-white" dir="rtl">
+          {/* Navbar يظهر في كل الصفحات */}
+          <Navbar />
+          
           <Routes>
             {/* الصفحة الرئيسية */}
             <Route path="/" element={<Home />} />
